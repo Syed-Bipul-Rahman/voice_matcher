@@ -1,0 +1,13 @@
+# Voice Match - Python packages (tested together on Python 3.13, October 2026)
+# Linux without an NVIDIA GPU: install CPU PyTorch first (see README), then: pip install -r requirements.txt
+# Tested with torch 2.14.1, torchaudio 2.11.0, torchcodec 0.17.0
+
+coqui-tts[codec]==0.27.5      # loads the OpenVoice v2 voice converter (model downloads on first run)
+transformers==4.57.6          # coqui-tts does not work with transformers 5.x yet
+praat-parselmouth==0.4.7      # Praat: pitch measurement and the pitch/formant pre-shift
+Resemblyzer==0.1.4            # voice-similarity judge (--best-of and the final report)
+librosa>=0.10                 # tested with 1.0.0
+soundfile>=0.12               # tested with 0.14.0
+pyloudnorm>=0.1.1             # tested with 0.2.0
+numpy>=1.26                   # tested with 2.5.3
+scipy>=1.11                   # tested with 1.18.1

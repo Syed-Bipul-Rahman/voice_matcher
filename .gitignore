@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Voice recordings stay out of this public repo (a voice sample is all a cloning tool needs)
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.mp4
+takes/
+
+# Model caches if pointed inside the repo
+caches/
