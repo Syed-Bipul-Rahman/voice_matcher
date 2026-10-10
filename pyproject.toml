@@ -1,0 +1,24 @@
+[project]
+name = "voice-match"
+version = "1.1.0"
+description = "Make a recording sound like another person's voice (speech-to-speech voice conversion)."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+# Tested together on Python 3.13 (Linux CPU and macOS Apple Silicon), October 2026. uv.lock pins every version.
+dependencies = [
+    "coqui-tts[codec]==0.27.5",   # loads the OpenVoice v2 voice converter
+    "transformers==4.57.6",       # coqui-tts does not work with transformers 5.x yet
+    "praat-parselmouth==0.4.7",   # Praat: pitch measurement and the pitch/formant pre-shift
+    "Resemblyzer==0.1.4",         # voice-similarity judge
+    "torch>=2.9",
+    "torchaudio>=2.9",            # imported by coqui-tts
+    "setuptools<81",              # webrtcvad (via Resemblyzer) imports pkg_resources, removed in setuptools 81
+    "librosa>=0.10",
+    "soundfile>=0.12",
+    "pyloudnorm>=0.1.1",
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[tool.uv]
+package = false

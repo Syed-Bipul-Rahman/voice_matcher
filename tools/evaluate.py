@@ -17,7 +17,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import voice_match as vm  # noqa: E402
+from vmengine import audio as vm  # noqa: E402
+from vmengine import models as M  # noqa: E402
+from vmengine.pipeline import Judge  # noqa: E402
 
 
 def read_script(path):
@@ -38,19 +40,22 @@ def main():
     ap.add_argument("--split-by", help="file whose pauses define the phrase windows (default: first file)")
     ap.add_argument("--lang", default="bn", help="recogniser language (default bn)")
     ap.add_argument("--asr-model", help="Hugging Face wav2vec2 model id for the recogniser")
+    ap.add_argument("--models-dir", help="where the models are (default: the one `voice_match.py setup` uses)")
     args = ap.parse_args()
+    M.go_offline()
+    models_dir = args.models_dir or M.default_models_dir()
 
     import torch
     import pyloudnorm as pyln
     torch.set_num_threads(max(1, os.cpu_count() or 1))
 
     script = read_script(args.script) if args.script else None
-    asr_id = (args.asr_model or vm.ASR_MODELS.get(args.lang.lower())) if script else None
+    asr_id = M.resolve_asr_id(args.lang, args.asr_model) if script else None
     if script and not asr_id:
         sys.exit(f"No recogniser known for language '{args.lang}'. Pass --asr-model.")
 
     ref = vm.load_audio(args.reference, 16000)
-    judge = vm.Judge(ref, asr_id)
+    judge = Judge(ref, M.load_recogniser(models_dir, asr_id) if asr_id else None)
     windows = vm.speech_chunks(vm.load_audio(args.split_by or args.files[0], vm.OUT_SR), vm.OUT_SR)
     meter = pyln.Meter(vm.OUT_SR)
 

@@ -125,6 +125,69 @@ The first packaged version, which still used whole-file gain instead of the limi
 - The Bangla recogniser's repository has only `.bin` weights on its main branch. Loading them makes transformers start a background thread that also downloads an auto-converted safetensors copy, 2.5 GB in total. `use_safetensors=False` doesn't stop that thread (tested). Loading with `use_safetensors=True` fetches only the converted copy: 1.2 GB on disk, and the recogniser gives identical transcripts.
 - On Linux, installing CPU PyTorch first avoids several GB of CUDA downloads.
 
+## macOS, offline engine and server (v1.1, 10 October 2026)
+
+Measured on a Mac mini M4 (10 cores, 16 GB) with Python 3.13 and the same package versions as on Linux. The test
+read here is the MP3 version of the read (`team_read.m4a.mp3`, 75.8 s); its char errors are 8.6% instead of 8.4%
+for the M4A. Every row is scored by `tools/evaluate.py` with the same reference and script.
+
+| Version | Device | Time | Similarity | Char errors | Loudness | Length |
+|---|---|---|---|---|---|---|
+| Original read | | | 0.576 | 8.6% | −21.4 LUFS | 75.8 s |
+| v1.0, fast | CPU | 19 s | 0.904 | 20.5% | −16.0 | 75.8 s |
+| v1.0, best-of | CPU | 1 min 57 s | 0.919 | 14.2% | −16.0 | 75.8 s |
+| **v1.1, fast** | CPU | **13 s** | 0.904 | 19.5% | −16.0 | 75.8 s |
+| **v1.1, best-of** | CPU | **1 min 26 s** | 0.915 | 14.8% | −16.0 | 75.8 s |
+| v1.1, fast, network blocked | CPU | 13 s | 0.899 | 20.1% | −16.0 | 75.8 s |
+| v1.1, best-of, network blocked | CPU | 1 min 23 s | 0.921 | 15.6% | −16.0 | 75.8 s |
+| v1.1 server, fast | CPU | 16 s | 0.903 | 19.7% | −16.0 | 75.8 s |
+| v1.1 server, best-of, network blocked | CPU | 75 s | 0.919 | 15.5% | −16.0 | 75.8 s |
+| v1.1, fast | MPS (converter) | 11 s | 0.901 | 18.0% | −16.0 | 75.8 s |
+| v1.1, best-of | MPS (converter) | 58 s | 0.916 | 15.8% | −16.0 | 75.8 s |
+| v1.1, best-of | MPS (converter + recogniser) | 40 s | 0.920 | 15.1% | −16.0 | 75.8 s |
+
+Baseline from the clean Linux install: fast 0.90 / 18.8%, best-of 0.91 / 15.3%. Every v1.1 row is within ±0.02
+similarity and ±2 points of char errors of it. Peaks: −1.0 dBFS. The server's best-of row includes one take picked
+by hand (phrase 3, take 4), which the server check does on purpose.
+
+**Run-to-run spread.** The same command gives 19.5–20.5% char errors in fast mode and 14.8–15.6% in best-of, and
+similarity within ±0.005. OpenVoice's posterior encoder samples noise (`tau`), so no two runs are identical.
+
+**Peak normalisation was hidden in coqui-tts.** v1.0 wrote each converted phrase with coqui-tts's
+`voice_conversion_to_file`, whose `save_wav` scales every file to full scale (`wav * 32767 / max(0.01, max|wav|)`).
+So every phrase was peak-normalised before it was placed back into the timeline, and the polish stage was tuned on
+that. v1.1 calls the model directly (`extract_se`, then `inference` with `g_src` and `g_tgt`) and copies that
+normalisation explicitly.
+
+**Speed-ups in v1.1** (same quality): the reference's tone-colour embedding is computed once instead of once per
+take, and audio stays in memory (no WAV round trips for the pre-shift and the converter).
+
+**Offline.** `tools/offline_check.sh` blocks every internet socket and DNS lookup in all Python processes and sets
+`HTTP(S)_PROXY` to a closed port. v1.1 fast, best-of and the full server session: **0 attempts**. v1.0 best-of:
+24 blocked attempts (HEAD requests for `preprocessor_config.json`), then failure. The recogniser's main branch only
+has `.bin` weights and v1.0 loaded an auto-converted safetensors copy from a Hub pull-request revision, which can't
+be resolved offline. Setup now saves the loaded model with `save_pretrained(safe_serialization=True)` into a plain
+folder (1.26 GB), loaded with `local_files_only=True`; transcripts are the same.
+
+**Match strength.** The converter maps the read's speech through the source speaker's tone-colour embedding
+(`g_src`) into the target's (`g_tgt`). Blending the target embedding,
+`g_tgt = α · reference + (1 − α) · read`, gives a smooth control. Phrase 1, automatic pre-shift, two runs:
+
+| α | Similarity | Words kept |
+|---|---|---|
+| 1.0 (default, = v1.0) | 0.88–0.90 | 0.87–0.89 |
+| 0.5 | 0.75–0.78 | 0.89 |
+| 0.0 | 0.62–0.63 | 0.89–0.91 |
+
+At 0.0 the pre-shifted read keeps its own timbre, so similarity drops to near the pre-shift-only level (0.61 in
+experiment 1). Values between 0.8 and 1.0 are the useful range for fine-tuning.
+
+**Single-phrase preview** (server, models loaded, CPU): about 0.9 s per phrase including the similarity and
+words-kept scores. The first call loads the converter and recogniser (about 4 s).
+
+**Apple GPU (MPS).** Quality matches the CPU within the limits, and best-of runs about 2× faster with both the
+converter and the recogniser on the GPU. CPU stays the default until MPS has been tested on more recordings.
+
 ## Licences (checked 10 October 2026)
 
 | Part | Licence | Where it was checked |

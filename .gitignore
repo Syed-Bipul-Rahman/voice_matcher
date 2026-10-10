@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 # Python
 .venv/
 __pycache__/
@@ -15,3 +18,4 @@ takes/
 
 # Model caches if pointed inside the repo
 caches/
+models/

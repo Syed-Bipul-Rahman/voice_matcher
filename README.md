@@ -29,27 +29,37 @@ This is **voice conversion** (speech in, speech out), not text-to-speech. Nothin
 
 I also tried FreeVC (0.76) and kNN-VC (0.87, but the words came out noticeably blurrier). OpenVoice v2 after the pre-shift gave the best balance.
 
-**Results on the full 76-second ORYZN read** (2-core CPU, no GPU):
+**Results on the full 76-second ORYZN read**
 
-| | Similarity | Script characters a Bangla recogniser gets wrong | Time |
-|---|---|---|---|
-| The team member's original read | 0.58 | 8.4% | |
-| `voice_match.py` | 0.90 | 18.8% | about 1 minute |
-| `voice_match.py --best-of` | 0.91 | 15.3% | about 6 minutes |
+| | Similarity | Script characters a Bangla recogniser gets wrong | Time, 2-core Linux CPU | Time, Mac mini M4 (CPU) |
+|---|---|---|---|---|
+| The team member's original read | 0.58 | 8.4% | | |
+| `voice_match.py` | 0.90 | 18.8–20% | about 1 minute | 13 s |
+| `voice_match.py --best-of` | 0.91–0.92 | 14–16% | about 6 minutes | 1 min 25 s |
 
-Measured from a clean install with `tools/evaluate.py`; the details are in [docs/RESEARCH.md](docs/RESEARCH.md).
+Measured with `tools/evaluate.py`; the details are in [docs/RESEARCH.md](docs/RESEARCH.md). Results vary by about ±0.01 similarity and ±1 point of char errors between runs, because the converter samples a little noise.
 
 The words come out a little softer than in the original read; `--best-of` wins back part of that.
 
 ## Install
 
-You need Python 3.10–3.13 and FFmpeg. Tested on Linux with Python 3.13 and no GPU. It should also work on macOS, but that hasn't been tested.
+You need Python 3.10–3.13 (3.13 is tested; not 3.14) and FFmpeg. Tested on Linux (CPU only) and on macOS on Apple Silicon.
+
+**With uv (recommended; installs the exact versions that were tested)**
+
+```bash
+# macOS: brew install uv ffmpeg     Ubuntu/Debian: sudo apt install ffmpeg, then install uv from astral.sh
+uv sync                              # creates .venv with Python 3.13 and every pinned package
+source .venv/bin/activate
+```
+
+**With pip**
 
 ```bash
 # 1. FFmpeg.  macOS: brew install ffmpeg    Ubuntu/Debian: sudo apt install ffmpeg
 
-# 2. A virtual environment
-python3 -m venv .venv
+# 2. A virtual environment with Python 3.13
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 
@@ -60,20 +70,41 @@ pip install torch torchaudio torchcodec --index-url https://download.pytorch.org
 pip install -r requirements.txt
 ```
 
+**Then download the models, once (1.4 GB):**
+
+```bash
+python voice_match.py setup                  # converter (126 MB) and Bangla recogniser (1.2 GB)
+python voice_match.py setup --no-recogniser  # converter only, if you only need fast mode
+python voice_match.py setup --status         # what is installed
+```
+
+After setup the tool never uses the network: it loads every model from its own folder and sets
+`HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. If a model is missing it stops with a message telling you to run
+setup, instead of trying to download. The models folder is shared with the Voice Match desktop app:
+
+| System | Models folder |
+|---|---|
+| macOS | `~/Library/Application Support/Voice Match/models` |
+| Linux | `~/.local/share/voice-match/models` (or `$XDG_DATA_HOME/voice-match/models`) |
+
+Set `VOICE_MATCH_MODELS` or pass `--models-dir` to use another folder. Setup reuses models that older versions
+of the tool downloaded into coqui-tts's cache (`~/Library/Application Support/tts` on macOS,
+`~/.local/share/tts` on Linux) or the Hugging Face cache (`~/.cache/huggingface`), so it doesn't fetch them again;
+after that you can delete those old caches. The similarity model comes inside the Resemblyzer package.
+
 If something fails on macOS:
 
-- **`webrtcvad` fails to build:** install Apple's command-line tools with `xcode-select --install`, then rerun step 4.
-- **"Could not load libtorchcodec":** install FFmpeg through conda instead (`conda install -c conda-forge ffmpeg`), which is the route torchcodec documents.
-
-Models download the first time they're needed: the voice converter (126 MB) on the first run, and the Bangla speech recogniser (1.2 GB) on the first `--best-of` run. They're cached in `~/.local/share/tts` and `~/.cache/huggingface`. The similarity model comes inside the Resemblyzer package.
+- **`webrtcvad` fails to build:** install Apple's command-line tools with `xcode-select --install`, then rerun the install.
+- **"No module named 'pkg_resources'":** `pip install "setuptools<81"` (already pinned in `requirements.txt` and `uv.lock`).
+- **"Could not load libtorchcodec":** torchcodec needs FFmpeg's shared libraries. `brew install ffmpeg` provides them; if it still fails, install FFmpeg through conda (`conda install -c conda-forge ffmpeg`), which is the route torchcodec documents.
 
 ## Use
 
 ```bash
-# Fast: about 1 minute for a 76-second read on a 2-core CPU
+# Fast: 13 s on a Mac mini M4, about 1 minute on a 2-core Linux CPU, for a 76-second read
 python voice_match.py team_read.m4a my_voice.mp3 -o voiceover.wav
 
-# Best quality: six takes per phrase, keeps the best one (about 6 minutes)
+# Best quality: six takes per phrase, keeps the best one
 python voice_match.py team_read.m4a my_voice.mp3 -o voiceover.wav --best-of
 
 # Also save every take, so you can swap one by ear
@@ -87,11 +118,22 @@ Inputs can be WAV, MP3 or M4A (phone voice memos). The output is a 48 kHz, 24-bi
 | `--best-of` | Six takes per phrase, keeps the best. About 6× slower. |
 | `--keep-takes DIR` | Saves every take (`phraseNN_takeK.wav`), each original phrase, and `takes.csv` with every take's scores and start time. |
 | `--lang bn` | Language for the word check in `--best-of` (default `bn`). `--lang none` picks takes by voice similarity only. |
-| `--asr-model ID` | Uses another Hugging Face wav2vec2 model for the word check, for example for English. |
+| `--asr-model ID` | Uses another Hugging Face wav2vec2 model for the word check, for example for English. Install it first with `setup --asr-model ID`. |
 | `--no-preshift` | Skips step 2. Useful when both voices are already very similar. |
 | `--no-polish` | Skips step 5 and gives you the raw converted voice. |
 | `--lufs -16` | Loudness of the finished file. |
-| `--device cuda` | Runs on an NVIDIA GPU. |
+| `--device mps` | Runs on the Apple GPU: same quality, best-of about 2× faster on an M4 (see RESEARCH.md). `cuda` for an NVIDIA GPU. Default: CPU. |
+| `--models-dir DIR` | Where the models are, if not in the default folder. |
+
+**Engine server.** `python voice_match.py serve` starts a long-running engine that loads the models once and takes
+JSON-lines commands on stdin (analyze, render one phrase with given settings, render all, cancel, export). The
+Voice Match desktop app drives it; the protocol is described at the top of `vmengine/server.py`, and
+`tools/server_check.py` exercises every command.
+
+**Testing offline.** `tools/offline_check.sh <command>` runs any command with the network blocked and logs every
+connection attempt, for example
+`tools/offline_check.sh python voice_match.py read.m4a ref.mp3 -o out.wav --best-of`. It prints
+`netguard: 0 network attempt(s)` when the run stayed offline.
 
 ## Getting good results
 
@@ -118,7 +160,7 @@ The recordings matter more than any setting.
 - The converter works at 22 kHz, so the voice has a little less "air" than a studio recording. That's fine for social video.
 - Accent and speaking style come from the read, not the reference.
 - Very different voices, such as a child's read into an adult's voice, are harder.
-- Fast mode runs a little faster than real time on a 2-core CPU; `--best-of` takes about five times the length of the read.
+- Fast mode runs a little faster than real time on a 2-core CPU; `--best-of` takes about five times the length of the read. On a Mac mini M4 they take about 0.2× and 1.1× the length of the read.
 
 ## Licences
 
@@ -137,7 +179,7 @@ GPL-3.0 conditions apply when you distribute software that contains it, for exam
 
 ## Turning it into a team tool
 
-- To call it from your own code, move the body of `main()` into a function that takes the two file paths and options. The building blocks (`pitch_profile`, `preshift_settings`, `speech_chunks`, `Judge`, `polish`) are already separate functions.
+- To call it from your own code, use `vmengine.pipeline.Session` (analyze, render, export); `voice_match.py` shows how. The building blocks (`pitch_profile`, `preshift_settings`, `speech_chunks`, `Judge`, `polish`) live in `vmengine/`.
 - The quickest team interface is a small Gradio app on one office machine: two upload boxes, a "best quality" checkbox, and a download link.
 - As a service, wrap it in FastAPI with a job queue, and load the models once at start-up instead of on every request.
 - Keep a folder of approved reference voices, each with its consent note, and let people pick a voice instead of uploading one.

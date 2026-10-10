@@ -25,6 +25,14 @@ How the voice-matching tool came about, in order. Newest entries go at the botto
 5. Final check: the README's commands, run word for word in a fresh folder with empty model caches. Install took 60 s. Fast mode took 56 s (similarity 0.90, char errors 18.8%); `--best-of` took 6.5 min including downloads (0.91, 15.3%). The output was −16.0 LUFS with −0.9 dBFS peaks. That run caught the recogniser downloading twice; it was fixed and re-tested.
 6. This repository was created so that a machine reset can't lose the work again.
 
+## The engine moves to a Mac, and an app is planned (10 October 2026)
+
+1. Asked for a macOS desktop app ("Voice Match", Rust with Tauri, for a Mac mini M4) around the Python engine, working fully offline after a one-time setup, with the Python engine to be replaced by a native Rust one later. Step one was to fix the engine so the command-line tool and the app share it.
+2. Installed on the Mac with uv and Python 3.13. Two packages the Linux install had pulled in by other routes were missing: `torchaudio` (coqui-tts imports it) and `setuptools<81` (webrtcvad imports `pkg_resources`).
+3. The unchanged tool on the M4: fast 19 s (0.904, 20.5% char errors), best-of 1 min 57 s (0.919, 14.2%).
+4. The engine became the `vmengine` package, with a one-time `setup` command, offline loading, a JSON-lines server for the app, and manual settings including match strength. Rewriting the converter call showed that coqui-tts peak-normalises every phrase when it writes it to disk, which the new in-memory path has to copy.
+5. With the network blocked and every connection logged, fast, best-of and the server all finished with zero attempts; the old version made 24 attempts and failed. Quality stayed within the regression limits, and the new engine is faster (fast 13 s, best-of 1 min 26 s; 40 s on the Apple GPU).
+
 ## How to keep this history useful
 
 - Every change to the tool goes in [CHANGELOG.md](../CHANGELOG.md).
